@@ -95,6 +95,7 @@ export interface OrderItem {
   subtotal: number;
   special_instructions?: string;
   created_at: string;
+  menu_item?: MenuItem;
 }
 
 // Address type
@@ -126,6 +127,7 @@ export interface VendorWithDetails extends Vendor {
   menu_items?: MenuItem[];
   categories?: Category[];
   average_rating?: number;
+  distance?: number; // Add distance property for sorting by location
 }
 
 // Category type

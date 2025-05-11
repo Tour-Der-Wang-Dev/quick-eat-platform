@@ -177,3 +177,21 @@ export const useCartStore = create<CartStore>()(
     }
   )
 );
+
+// Export a hook that can be used in components
+export const useCart = () => {
+  const store = useCartStore();
+  
+  return {
+    cart: store.cart,
+    addToCart: store.addToCart,
+    updateCartItem: store.updateQuantity,
+    removeCartItem: store.removeFromCart,
+    clearCart: store.clearCart,
+    subtotal: store.getSubtotal(),
+    tax: store.getTax(),
+    deliveryFee: store.getDeliveryFee(),
+    total: store.getTotal(),
+    itemCount: store.getItemCount(),
+  };
+};
