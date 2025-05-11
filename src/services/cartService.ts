@@ -44,7 +44,7 @@ export const useCart = () => {
       specialInstructions?: string,
       vendorName?: string
     ) => {
-      setCart((prevCart) => {
+      setCart((prevCart: Cart) => {
         // If adding from a different vendor, clear cart first
         if (prevCart.vendorId && prevCart.vendorId !== menuItem.vendor_id) {
           return {
@@ -103,7 +103,7 @@ export const useCart = () => {
 
   const updateCartItem = useCallback(
     (itemId: string, quantity: number) => {
-      setCart((prevCart) => {
+      setCart((prevCart: Cart) => {
         if (quantity <= 0) {
           // Remove item if quantity is 0 or less
           return {
@@ -125,7 +125,7 @@ export const useCart = () => {
 
   const removeCartItem = useCallback(
     (itemId: string) => {
-      setCart((prevCart) => ({
+      setCart((prevCart: Cart) => ({
         ...prevCart,
         items: prevCart.items.filter((item) => item.id !== itemId),
       }));

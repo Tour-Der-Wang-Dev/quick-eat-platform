@@ -83,7 +83,11 @@ export const clearAllCache = (): void => {
 /**
  * Hook for caching a value
  */
-export function useLocalStorageCache<T>(key: string, initialValue: T, options?: CacheOptions): [T, (value: T) => void] {
+export function useLocalStorageCache<T>(
+  key: string, 
+  initialValue: T, 
+  options?: CacheOptions
+): [T, (value: T | ((prevValue: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => {
     const cached = getCache<T>(key);
     return cached !== null ? cached : initialValue;
@@ -93,8 +97,13 @@ export function useLocalStorageCache<T>(key: string, initialValue: T, options?: 
     setCache(key, value, options);
   }, [key, value, options]);
   
-  const updateValue = (newValue: T) => {
-    setValue(newValue);
+  const updateValue = (newValue: T | ((prevValue: T) => T)) => {
+    setValue(prev => {
+      const updatedValue = typeof newValue === 'function' 
+        ? (newValue as ((prevValue: T) => T))(prev)
+        : newValue;
+      return updatedValue;
+    });
   };
   
   return [value, updateValue];

@@ -2,7 +2,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Vendor, VendorWithDetails, MenuItem, OrderWithDetails, 
-  PaginationParams, VendorFilters, GeolocationPosition 
+  PaginationParams, VendorFilters, GeolocationPosition,
+  Profile, Customer, Order, OrderItem, Address, Category
 } from "@/types/app";
 import { useQuery, useMutation, useQueryClient, UseQueryOptions } from "@tanstack/react-query";
 
@@ -70,31 +71,34 @@ export const fetchVendors = async (
   if (userLocation && data) {
     // Use the database function we created for distance calculation
     const vendorsWithDistance = await Promise.all(
-      data.map(async (vendor) => {
-        const { data: distanceData } = await supabase.rpc('calculate_distance', {
-          lat1: userLocation.latitude,
-          lng1: userLocation.longitude,
-          lat2: vendor.latitude,
-          lng2: vendor.longitude
-        });
-        
-        return {
-          ...vendor,
-          distance: distanceData
-        };
+      data.map(async (vendor: any) => {
+        if (vendor.latitude && vendor.longitude) {
+          const { data: distanceData } = await supabase.rpc('calculate_distance', {
+            lat1: userLocation.latitude,
+            lng1: userLocation.longitude,
+            lat2: vendor.latitude,
+            lng2: vendor.longitude
+          });
+          
+          return {
+            ...vendor,
+            distance: distanceData
+          };
+        }
+        return vendor;
       })
     );
 
     if (filters?.sortBy === 'distance') {
-      return vendorsWithDistance.sort((a, b) => 
+      return vendorsWithDistance.sort((a: any, b: any) => 
         (a.distance || Infinity) - (b.distance || Infinity)
-      );
+      ) as VendorWithDetails[];
     }
     
-    return vendorsWithDistance;
+    return vendorsWithDistance as VendorWithDetails[];
   }
 
-  return data || [];
+  return data as VendorWithDetails[] || [];
 };
 
 export const fetchVendorById = async (id: string): Promise<VendorWithDetails> => {
@@ -114,7 +118,7 @@ export const fetchVendorById = async (id: string): Promise<VendorWithDetails> =>
     throw new Error(error.message);
   }
 
-  return data;
+  return data as VendorWithDetails;
 };
 
 // Menu Items API
@@ -133,7 +137,7 @@ export const fetchMenuItems = async (vendorId: string): Promise<MenuItem[]> => {
     throw new Error(error.message);
   }
 
-  return data || [];
+  return data as MenuItem[] || [];
 };
 
 // Orders API
@@ -163,7 +167,7 @@ export const fetchOrders = async (customerId?: string): Promise<OrderWithDetails
     throw new Error(error.message);
   }
 
-  return data || [];
+  return data as OrderWithDetails[] || [];
 };
 
 export const fetchOrderById = async (orderId: string): Promise<OrderWithDetails> => {
@@ -190,7 +194,7 @@ export const fetchOrderById = async (orderId: string): Promise<OrderWithDetails>
     throw new Error(error.message);
   }
 
-  return data;
+  return data as OrderWithDetails;
 };
 
 // React Query hooks
