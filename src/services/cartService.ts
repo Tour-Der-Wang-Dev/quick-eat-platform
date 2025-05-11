@@ -1,178 +1,179 @@
 
-import { MenuItem } from "@/types/app";
-import { useLocalStorageCache } from "@/utils/cacheUtils";
-import { useCallback } from "react";
+import { MenuItem } from '@/types/app';
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-export interface CartItem {
+// Define Cart types
+export type CartItem = {
   id: string;
-  menuItem: MenuItem;
+  menuItemId: string;
+  name: string;
+  price: number;
   quantity: number;
-  options?: {
-    groupId: string;
-    groupName: string;
-    itemId: string;
-    itemName: string;
-    priceAdjustment: number;
-  }[];
   specialInstructions?: string;
-}
-
-export interface Cart {
-  items: CartItem[];
-  vendorId: string | null;
-  vendorName: string | null;
-}
-
-const EMPTY_CART: Cart = {
-  items: [],
-  vendorId: null,
-  vendorName: null,
+  image?: string;
 };
 
-export const useCart = () => {
-  const [cart, setCart] = useLocalStorageCache<Cart>("shopping_cart", EMPTY_CART);
+export type Cart = {
+  items: CartItem[];
+  vendorId?: string;
+  vendorName?: string;
+};
 
-  const clearCart = useCallback(() => {
-    setCart(EMPTY_CART);
-  }, [setCart]);
+// Define Cart Store interface
+interface CartStore {
+  cart: Cart;
+  addToCart: (item: MenuItem, quantity: number, specialInstructions?: string) => void;
+  removeFromCart: (itemId: string) => void;
+  updateQuantity: (itemId: string, quantity: number) => void;
+  clearCart: () => void;
+  getTotal: () => number;
+  getItemCount: () => number;
+  getSubtotal: () => number;
+  getTax: () => number;
+  getDeliveryFee: () => number;
+}
 
-  const addToCart = useCallback(
-    (
-      menuItem: MenuItem,
-      quantity: number = 1,
-      options?: CartItem["options"],
-      specialInstructions?: string,
-      vendorName?: string
-    ) => {
-      setCart((prevCart: Cart) => {
-        // If adding from a different vendor, clear cart first
-        if (prevCart.vendorId && prevCart.vendorId !== menuItem.vendor_id) {
-          return {
-            items: [
-              {
-                id: `${menuItem.id}_${Date.now()}`,
-                menuItem,
-                quantity,
-                options,
-                specialInstructions,
-              },
-            ],
-            vendorId: menuItem.vendor_id,
-            vendorName: vendorName || null,
-          };
+// Tax and delivery fee calculations
+const calculateTax = (subtotal: number): number => subtotal * 0.10;
+const calculateDeliveryFee = (subtotal: number): number => {
+  if (subtotal >= 50) return 0;
+  return 5.99;
+};
+
+// Create and export the cart store
+export const useCartStore = create<CartStore>()(
+  persist(
+    (set, get) => ({
+      cart: { items: [] },
+      
+      addToCart: (menuItem: MenuItem, quantity: number, specialInstructions?: string) => {
+        const { cart } = get();
+        
+        // Check if adding from a different vendor
+        if (cart.vendorId && cart.vendorId !== menuItem.vendor_id) {
+          // Confirm with user before clearing cart
+          const confirmClear = window.confirm(
+            `Your cart contains items from ${cart.vendorName}. Do you want to clear it and add items from this restaurant instead?`
+          );
+          
+          if (!confirmClear) return;
+          
+          // Clear cart if confirmed
+          set({
+            cart: {
+              items: [],
+              vendorId: undefined,
+              vendorName: undefined,
+            }
+          });
         }
-
-        const existingItemIndex = prevCart.items.findIndex(
-          (item) =>
-            item.menuItem.id === menuItem.id &&
-            JSON.stringify(item.options) === JSON.stringify(options) &&
-            item.specialInstructions === specialInstructions
+        
+        // Check if item already exists in cart
+        const existingItemIndex = cart.items.findIndex(
+          item => item.menuItemId === menuItem.id
         );
-
-        let newItems;
+        
         if (existingItemIndex >= 0) {
           // Update existing item
-          newItems = [...prevCart.items];
-          newItems[existingItemIndex] = {
-            ...newItems[existingItemIndex],
-            quantity: newItems[existingItemIndex].quantity + quantity,
-          };
+          const updatedItems = [...cart.items];
+          updatedItems[existingItemIndex].quantity += quantity;
+          if (specialInstructions) {
+            updatedItems[existingItemIndex].specialInstructions = specialInstructions;
+          }
+          
+          // Update cart with new items
+          set({ cart: { 
+            ...cart,
+            items: updatedItems,
+            vendorId: menuItem.vendor_id,
+          }});
         } else {
           // Add new item
-          newItems = [
-            ...prevCart.items,
-            {
-              id: `${menuItem.id}_${Date.now()}`,
-              menuItem,
-              quantity,
-              options,
-              specialInstructions,
-            },
-          ];
-        }
-
-        return {
-          items: newItems,
-          vendorId: menuItem.vendor_id,
-          vendorName: vendorName || prevCart.vendorName,
-        };
-      });
-    },
-    [setCart]
-  );
-
-  const updateCartItem = useCallback(
-    (itemId: string, quantity: number) => {
-      setCart((prevCart: Cart) => {
-        if (quantity <= 0) {
-          // Remove item if quantity is 0 or less
-          return {
-            ...prevCart,
-            items: prevCart.items.filter((item) => item.id !== itemId),
+          const newItem: CartItem = {
+            id: `${Date.now()}`, // Generate unique ID
+            menuItemId: menuItem.id,
+            name: menuItem.name,
+            price: menuItem.price,
+            quantity,
+            specialInstructions,
+            image: menuItem.image_url,
           };
+          
+          // Update cart with new item and vendor info if needed
+          set({ cart: {
+            items: [...cart.items, newItem],
+            vendorId: menuItem.vendor_id,
+            vendorName: cart.vendorName || "Restaurant", // This would be replaced with actual vendor name
+          }});
         }
-
-        return {
-          ...prevCart,
-          items: prevCart.items.map((item) =>
-            item.id === itemId ? { ...item, quantity } : item
-          ),
-        };
-      });
-    },
-    [setCart]
-  );
-
-  const removeCartItem = useCallback(
-    (itemId: string) => {
-      setCart((prevCart: Cart) => ({
-        ...prevCart,
-        items: prevCart.items.filter((item) => item.id !== itemId),
-      }));
-    },
-    [setCart]
-  );
-
-  // Calculate cart totals with memoization
-  const calculateTotals = useCallback(() => {
-    const subtotal = cart.items.reduce(
-      (sum, item) => {
-        const itemPrice = item.menuItem.price;
-        const optionsPrice = item.options?.reduce(
-          (total, opt) => total + (opt.priceAdjustment || 0),
-          0
-        ) || 0;
-        
-        const totalItemPrice = (itemPrice + optionsPrice) * item.quantity;
-        return sum + totalItemPrice;
       },
-      0
-    );
-    
-    // Example tax calculation (assuming 7% tax)
-    const tax = subtotal * 0.07;
-    
-    // Example delivery fee calculation (fixed fee of 40)
-    const deliveryFee = cart.items.length > 0 ? 40 : 0;
-    
-    // Total cost
-    const total = subtotal + tax + deliveryFee;
-    
-    return {
-      subtotal,
-      tax,
-      deliveryFee,
-      total,
-      itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-    };
-  }, [cart.items]);
-
-  return {
-    cart,
-    addToCart,
-    updateCartItem,
-    removeCartItem,
-    clearCart,
-    ...calculateTotals(),
-  };
-};
+      
+      removeFromCart: (itemId: string) => {
+        const { cart } = get();
+        const updatedItems = cart.items.filter(item => item.id !== itemId);
+        
+        // If cart is empty after removal, clear vendor info
+        const updatedCart: Cart = updatedItems.length > 0 
+          ? { ...cart, items: updatedItems }
+          : { items: [], vendorId: undefined, vendorName: undefined };
+        
+        set({ cart: updatedCart });
+      },
+      
+      updateQuantity: (itemId: string, quantity: number) => {
+        const { cart } = get();
+        
+        if (quantity <= 0) {
+          get().removeFromCart(itemId);
+          return;
+        }
+        
+        const updatedItems = cart.items.map(item =>
+          item.id === itemId ? { ...item, quantity } : item
+        );
+        
+        set({ cart: { ...cart, items: updatedItems } });
+      },
+      
+      clearCart: () => {
+        set({
+          cart: {
+            items: [],
+            vendorId: undefined,
+            vendorName: undefined,
+          }
+        });
+      },
+      
+      getTotal: () => {
+        const subtotal = get().getSubtotal();
+        const tax = get().getTax();
+        const deliveryFee = get().getDeliveryFee();
+        return subtotal + tax + deliveryFee;
+      },
+      
+      getItemCount: () => {
+        return get().cart.items.reduce((count, item) => count + item.quantity, 0);
+      },
+      
+      getSubtotal: () => {
+        return get().cart.items.reduce(
+          (sum, item) => sum + item.price * item.quantity, 
+          0
+        );
+      },
+      
+      getTax: () => {
+        return calculateTax(get().getSubtotal());
+      },
+      
+      getDeliveryFee: () => {
+        return calculateDeliveryFee(get().getSubtotal());
+      },
+    }),
+    {
+      name: 'food-delivery-cart',
+    }
+  )
+);

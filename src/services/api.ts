@@ -1,11 +1,16 @@
 
-import { supabase } from "@/integrations/supabase/client";
 import { 
   Vendor, VendorWithDetails, MenuItem, OrderWithDetails, 
-  PaginationParams, VendorFilters, GeolocationPosition,
-  Profile, Customer, Order, OrderItem, Address, Category
+  PaginationParams, VendorFilters, GeolocationPosition
 } from "@/types/app";
 import { useQuery, useMutation, useQueryClient, UseQueryOptions } from "@tanstack/react-query";
+import { 
+  fetchVendors as fetchMockVendors,
+  fetchVendorById as fetchMockVendorById,
+  fetchMenuItems as fetchMockMenuItems,
+  fetchOrders as fetchMockOrders,
+  fetchOrderById as fetchMockOrderById
+} from "./mockDataService";
 
 // API query keys for consistent cache management
 export const queryKeys = {
@@ -24,177 +29,30 @@ export const fetchVendors = async (
   pagination?: PaginationParams,
   userLocation?: GeolocationPosition
 ): Promise<VendorWithDetails[]> => {
-  let query = supabase
-    .from('vendors')
-    .select(`
-      *,
-      profile:profiles(first_name, last_name, avatar_url),
-      categories:categories(*)
-    `);
-
-  // Apply filters
-  if (filters?.searchQuery) {
-    query = query.ilike('name', `%${filters.searchQuery}%`);
-  }
-
-  if (filters?.minRating) {
-    query = query.gte('avg_rating', filters.minRating);
-  }
-
-  if (filters?.isOpen !== undefined) {
-    query = query.eq('is_open', filters.isOpen);
-  }
-
-  // Apply pagination
-  if (pagination) {
-    const { page, pageSize } = pagination;
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize - 1;
-    query = query.range(start, end);
-  }
-
-  // Apply sorting
-  if (filters?.sortBy === 'rating') {
-    query = query.order('avg_rating', { ascending: false });
-  } else {
-    query = query.order('created_at', { ascending: false });
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error("Error fetching vendors:", error);
-    throw new Error(error.message);
-  }
-
-  // If we have user location, calculate and sort by distance
-  if (userLocation && data) {
-    // Use the database function we created for distance calculation
-    const vendorsWithDistance = await Promise.all(
-      data.map(async (vendor: any) => {
-        if (vendor.latitude && vendor.longitude) {
-          const { data: distanceData } = await supabase.rpc('calculate_distance', {
-            lat1: userLocation.latitude,
-            lng1: userLocation.longitude,
-            lat2: vendor.latitude,
-            lng2: vendor.longitude
-          });
-          
-          return {
-            ...vendor,
-            distance: distanceData
-          };
-        }
-        return vendor;
-      })
-    );
-
-    if (filters?.sortBy === 'distance') {
-      return vendorsWithDistance.sort((a: any, b: any) => 
-        (a.distance || Infinity) - (b.distance || Infinity)
-      ) as VendorWithDetails[];
-    }
-    
-    return vendorsWithDistance as VendorWithDetails[];
-  }
-
-  return data as VendorWithDetails[] || [];
+  // Use mock data service instead of Supabase
+  return fetchMockVendors(filters, pagination, userLocation);
 };
 
 export const fetchVendorById = async (id: string): Promise<VendorWithDetails> => {
-  const { data, error } = await supabase
-    .from('vendors')
-    .select(`
-      *,
-      profile:profiles!owner_id(*),
-      menu_items(*),
-      categories(*)
-    `)
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error(`Error fetching vendor ${id}:`, error);
-    throw new Error(error.message);
-  }
-
-  return data as VendorWithDetails;
+  // Use mock data service instead of Supabase
+  return fetchMockVendorById(id);
 };
 
 // Menu Items API
 export const fetchMenuItems = async (vendorId: string): Promise<MenuItem[]> => {
-  const { data, error } = await supabase
-    .from('menu_items')
-    .select(`
-      *,
-      category:categories(name)
-    `)
-    .eq('vendor_id', vendorId)
-    .order('display_order');
-
-  if (error) {
-    console.error(`Error fetching menu items for vendor ${vendorId}:`, error);
-    throw new Error(error.message);
-  }
-
-  return data as MenuItem[] || [];
+  // Use mock data service instead of Supabase
+  return fetchMockMenuItems(vendorId);
 };
 
 // Orders API
 export const fetchOrders = async (customerId?: string): Promise<OrderWithDetails[]> => {
-  let query = supabase
-    .from('orders')
-    .select(`
-      *,
-      vendor:vendors(*),
-      order_items:order_items(
-        *,
-        menu_item:menu_items(*),
-        options:order_item_options(*)
-      ),
-      address:addresses(*)
-    `)
-    .order('created_at', { ascending: false });
-
-  if (customerId) {
-    query = query.eq('customer_id', customerId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error("Error fetching orders:", error);
-    throw new Error(error.message);
-  }
-
-  return data as OrderWithDetails[] || [];
+  // Use mock data service instead of Supabase
+  return fetchMockOrders(customerId);
 };
 
 export const fetchOrderById = async (orderId: string): Promise<OrderWithDetails> => {
-  const { data, error } = await supabase
-    .from('orders')
-    .select(`
-      *,
-      customer:profiles!customer_id(*),
-      vendor:vendors(*),
-      driver:profiles!driver_id(*),
-      order_items:order_items(
-        *,
-        menu_item:menu_items(*),
-        options:order_item_options(*)
-      ),
-      address:addresses(*),
-      status_history:order_status_history(*)
-    `)
-    .eq('id', orderId)
-    .single();
-
-  if (error) {
-    console.error(`Error fetching order ${orderId}:`, error);
-    throw new Error(error.message);
-  }
-
-  return data as OrderWithDetails;
+  // Use mock data service instead of Supabase
+  return fetchMockOrderById(orderId);
 };
 
 // React Query hooks
