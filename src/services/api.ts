@@ -11,6 +11,7 @@ import {
   fetchOrders as fetchMockOrders,
   fetchOrderById as fetchMockOrderById
 } from "./mockDataService";
+import { memoize } from "@/utils/optimizationUtils";
 
 // API query keys for consistent cache management
 export const queryKeys = {
@@ -23,14 +24,35 @@ export const queryKeys = {
   addresses: "addresses"
 };
 
+// Memoized vendor filtering for better performance
+const filterVendors = memoize((vendors: VendorWithDetails[], filters?: VendorFilters) => {
+  if (!filters || Object.keys(filters).length === 0) return vendors;
+  
+  return vendors.filter(vendor => {
+    // Apply filters
+    if (filters.category && !vendor.categories?.some(c => c.name === filters.category)) return false;
+    if (filters.rating && vendor.rating < filters.rating) return false;
+    if (filters.priceRange && vendor.price_range !== filters.priceRange) return false;
+    return true;
+  });
+});
+
 // Vendors API
 export const fetchVendors = async (
   filters?: VendorFilters,
   pagination?: PaginationParams,
   userLocation?: GeolocationPosition
 ): Promise<VendorWithDetails[]> => {
-  // Use mock data service instead of Supabase
-  return fetchMockVendors(filters, pagination, userLocation);
+  const data = await fetchMockVendors(filters, pagination, userLocation);
+  
+  // Apply pagination in memory to reduce processing
+  if (pagination) {
+    const start = (pagination.page - 1) * pagination.pageSize;
+    const end = start + pagination.pageSize;
+    return data.slice(start, end);
+  }
+  
+  return data;
 };
 
 export const fetchVendorById = async (id: string): Promise<VendorWithDetails> => {
@@ -55,7 +77,7 @@ export const fetchOrderById = async (orderId: string): Promise<OrderWithDetails>
   return fetchMockOrderById(orderId);
 };
 
-// React Query hooks
+// React Query hooks with optimized settings
 export const useVendors = (
   filters?: VendorFilters,
   pagination?: PaginationParams,
@@ -65,6 +87,7 @@ export const useVendors = (
   return useQuery({
     queryKey: [queryKeys.vendors, filters, pagination, userLocation],
     queryFn: () => fetchVendors(filters, pagination, userLocation),
+    staleTime: 1000 * 60 * 2, // 2 minutes
     ...options
   });
 };
@@ -74,6 +97,7 @@ export const useVendorById = (id: string, options?: UseQueryOptions<VendorWithDe
     queryKey: queryKeys.vendor(id),
     queryFn: () => fetchVendorById(id),
     enabled: !!id,
+    staleTime: 1000 * 60 * 5, // 5 minutes
     ...options
   });
 };
@@ -83,6 +107,7 @@ export const useMenuItems = (vendorId: string, options?: UseQueryOptions<MenuIte
     queryKey: queryKeys.menuItems(vendorId),
     queryFn: () => fetchMenuItems(vendorId),
     enabled: !!vendorId,
+    staleTime: 1000 * 60 * 10, // 10 minutes - menu items change less frequently
     ...options
   });
 };

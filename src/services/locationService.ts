@@ -1,7 +1,8 @@
 
 import { GeolocationPosition } from '@/types/app';
 import { getCache, setCache } from '@/utils/cacheUtils';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { memoize } from '@/utils/optimizationUtils';
 
 // Constants
 const LOCATION_CACHE_KEY = 'user_location';
@@ -10,6 +11,28 @@ const DEFAULT_LOCATION: GeolocationPosition = {
   latitude: 13.7563, // Bangkok default coordinates
   longitude: 100.5018
 };
+
+// Memoized distance calculation for better performance
+const calculateDistanceMemoized = memoize(
+  (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(deg2rad(lat1)) *
+        Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  },
+  (lat1, lon1, lat2, lon2) => `${lat1.toFixed(4)},${lon1.toFixed(4)},${lat2.toFixed(4)},${lon2.toFixed(4)}`
+);
+
+function deg2rad(deg: number): number {
+  return deg * (Math.PI / 180);
+}
 
 /**
  * Service to handle geolocation with caching and fallback
@@ -39,9 +62,10 @@ export const LocationService = {
               longitude: position.coords.longitude
             };
             
-            // Cache the location
+            // Cache the location with memory caching for faster access
             setCache(LOCATION_CACHE_KEY, userLocation, {
-              expiresIn: LOCATION_CACHE_TIME
+              expiresIn: LOCATION_CACHE_TIME,
+              useMemoryCache: true
             });
             
             resolve(userLocation);
@@ -76,7 +100,8 @@ export const LocationService = {
           };
           
           setCache(LOCATION_CACHE_KEY, userLocation, {
-            expiresIn: LOCATION_CACHE_TIME
+            expiresIn: LOCATION_CACHE_TIME,
+            useMemoryCache: true
           });
         },
         (error) => {
@@ -91,49 +116,48 @@ export const LocationService = {
    * Calculate distance between two points in kilometers
    */
   calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Earth's radius in km
-    const dLat = this.deg2rad(lat2 - lat1);
-    const dLon = this.deg2rad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.deg2rad(lat1)) *
-        Math.cos(this.deg2rad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const d = R * c;
-    return d;
+    return calculateDistanceMemoized(lat1, lon1, lat2, lon2);
   },
 
-  deg2rad(deg: number): number {
-    return deg * (Math.PI / 180);
-  }
+  deg2rad
 };
 
 /**
- * Hook for using location in components
+ * Optimized hook for using location in components
  */
 export function useUserLocation() {
   const [location, setLocation] = useState<GeolocationPosition | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   const updateLocation = useCallback(async () => {
     try {
       setLoading(true);
       const position = await LocationService.getCurrentPosition();
-      setLocation(position);
-      setError(null);
+      
+      if (isMountedRef.current) {
+        setLocation(position);
+        setError(null);
+      }
     } catch (err) {
-      setError('Unable to retrieve your location');
-      setLocation(DEFAULT_LOCATION);
+      if (isMountedRef.current) {
+        setError('Unable to retrieve your location');
+        setLocation(DEFAULT_LOCATION);
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     updateLocation();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [updateLocation]);
 
   return { location, loading, error, updateLocation };
